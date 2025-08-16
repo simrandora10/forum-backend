@@ -16,6 +16,8 @@ app.use('/api/threads', require('./routes/threadRoutes'));
 app.use('/api/comment', require('./routes/commentRoutes'));
 app.use('/api/replies', require('./routes/replyroutes'));
 app.use('/api/search', require('./routes/searchRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
+
 
 
 

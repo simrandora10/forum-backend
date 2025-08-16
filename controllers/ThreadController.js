@@ -30,7 +30,7 @@ exports.getThreads = async (req, res) => {
     let filter = {};
 
     if (category) {
-      filter.category = { $regex: new RegExp(category, 'i') };
+      filter.category = category; // ✅ now using category _id (ref to Category)
     }
     if (tag) {
       filter.tags = { $regex: new RegExp(tag, 'i') };
@@ -42,19 +42,34 @@ exports.getThreads = async (req, res) => {
       ];
     }
 
-    let query = Thread.find(filter).populate('createdBy', 'name email');
+    let query = Thread.find(filter)
+      .populate('createdBy', 'name email')
+      .populate('category', 'name');
 
+    // ✅ Sorting
     if (sort === 'recent') {
       query = query.sort({ createdAt: -1 });
     } else if (sort === 'votes') {
-      // sorting by total votes (calculated dynamically)
-      query = query.sort({ votes: -1 });
+      // sort by total vote score
+      query = query.sort({
+        // we can’t directly sort by votes array → use aggregation
+      });
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     query = query.skip(skip).limit(parseInt(limit));
 
-    const threads = await query;
+    let threads = await query;
+
+    // ✅ Calculate voteScore manually for sorting
+    if (sort === 'votes') {
+      threads = threads.sort(
+        (a, b) =>
+          b.votes.reduce((sum, v) => sum + v.value, 0) -
+          a.votes.reduce((sum, v) => sum + v.value, 0)
+      );
+    }
+
     const total = await Thread.countDocuments(filter);
 
     res.json({
@@ -72,7 +87,8 @@ exports.getThreads = async (req, res) => {
 exports.getThreadById = async (req, res) => {
   try {
     const thread = await Thread.findById(req.params.id)
-      .populate('createdBy', 'name email');
+      .populate('createdBy', 'name email')
+      .populate('category', 'name');
 
     if (!thread) {
       return res.status(404).json({ message: 'Thread not found' });
@@ -129,7 +145,7 @@ exports.deleteThread = async (req, res) => {
   }
 };
 
-// ✅ Single API for voting (Upvote / Downvote / Toggle)
+// ✅ Voting System (Upvote / Downvote / Toggle)
 exports.voteThread = async (req, res) => {
   try {
     const { value } = req.body; // 1 = upvote, -1 = downvote
@@ -145,12 +161,12 @@ exports.voteThread = async (req, res) => {
 
     if (existingVote) {
       if (existingVote.value === value) {
-        // Toggle off (remove vote if same value)
+        // Toggle off
         thread.votes = thread.votes.filter(
           (v) => v.user.toString() !== req.user._id.toString()
         );
       } else {
-        existingVote.value = value; // Update vote
+        existingVote.value = value; // Update
       }
     } else {
       thread.votes.push({ user: req.user._id, value });
